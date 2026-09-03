@@ -24,8 +24,17 @@ Bot oficial da **Pollar Vendas**, feito para ficar no servidor da Pollar no Disc
    ```
 3. Rode o bot:
    ```bash
-   python bot.py
+   python main.py
    ```
+
+## ☁️ Deploy na VertraCloud
+
+1. Suba este repositório (público ou privado) para o GitHub.
+2. No painel da VertraCloud, escolha **Deploy via GitHub** e selecione o repositório.
+
+3. O entry point `main.py` é detectado automaticamente.
+4. Configure a variável `DISCORD_TOKEN` nas variáveis de ambiente do projeto (o `.env` não é enviado para nuvem)。
+5. O bot sobe sozinho e o comando `!setup` organiza os canais de tickets no servidor.
 
 ## 📋 Comandos
 
