@@ -3,7 +3,9 @@ from discord.ext import commands
 
 from config import (
     AUTO_ROLE_NAME,
+    BOT_ID,
     DISCORD_TOKEN,
+    GUILD_ID,
     STAFF_ROLE_NAME,
     SUPPORT_TOPICS,
     TICKET_CATEGORY_NAME,
@@ -27,8 +29,10 @@ async def on_ready():
     bot.add_view(WelcomeView())
     for topic in SUPPORT_TOPICS:
         bot.add_view(TicketCloseView(topic=topic, user_id=None))
-    for guild in bot.guilds:
-        await prepare_guild(guild)
+    for guild in list(bot.guilds):
+        if guild.id == GUILD_ID:
+            print(f"Preparando {guild.name} ({guild.id})")
+            await prepare_guild(guild)
 
 
 async def prepare_guild(guild: discord.Guild):
@@ -72,6 +76,8 @@ async def setup(ctx: commands.Context):
     """Cria os paineis de tickets e boas-vindas no servidor."""
     if not ctx.guild:
         return
+    if ctx.guild.id == GUILD_ID:
+        return
     if not is_staff(ctx.author):
         return await ctx.send("Voce nao tem permissao para usar este comando.")
     await prepare_guild(ctx.guild)
@@ -96,6 +102,10 @@ async def setup(ctx: commands.Context):
 @bot.command(name="anuncio")
 async def announce(ctx: commands.Context, canal: discord.TextChannel = None, *, mensagem: str = None):
     """Envia um anuncio num canal com um embed bonito."""
+    if not ctx.guild:
+        return
+    if ctx.guild.id == GUILD_ID:
+        return
     if not is_staff(ctx.author):
         return await ctx.send("Voce nao tem permissao para usar este comando.")
     if canal is None:
