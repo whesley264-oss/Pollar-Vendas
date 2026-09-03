@@ -1,6 +1,6 @@
 import discord
 
-from config import STAFF_ROLE_NAME
+from config import STAFF_ROLE_NAME, TICKET_CATEGORY_NAME
 
 
 def is_staff(member: discord.Member) -> bool:
@@ -27,7 +27,7 @@ def find_role(guild: discord.Guild, name: str) -> discord.Role:
 
 
 def ticket_channel_for(guild: discord.Guild, user_id: int) -> discord.TextChannel:
-    category = find_category(guild, "Tickets")
+    category = find_category(guild, TICKET_CATEGORY_NAME)
     if not category:
         return None
     for channel in category.channels:

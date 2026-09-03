@@ -23,6 +23,10 @@ bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 @bot.event
 async def on_ready():
     print(f"{bot.user} esta online em {len(bot.guilds)} servidor(es)!")
+    bot.add_view(TicketPanelView())
+    bot.add_view(WelcomeView())
+    for topic in SUPPORT_TOPICS:
+        bot.add_view(TicketCloseView(topic=topic, user_id=None))
     for guild in bot.guilds:
         await prepare_guild(guild)
 
@@ -164,7 +168,10 @@ class TicketButton(discord.ui.Button[str]):
             return await interaction.response.send_message(f"Voce ja tem um ticket aberto: {existing.mention}", ephemeral=True)
         category = find_category(guild, TICKET_CATEGORY_NAME)
         if category is None:
-            category = await guild.create_category(TICKET_CATEGORY_NAME)
+            try:
+                category = await guild.create_category(TICKET_CATEGORY_NAME)
+            except discord.Forbidden:
+                return await interaction.response.send_message("Sem permissao para criar a categoria de tickets.", ephemeral=True)
         logs_channel = find_channel(guild, TICKET_LOGS_NAME)
         staff_role = discord.utils.get(guild.roles, name=STAFF_ROLE_NAME)
         overwrites = {
@@ -173,13 +180,13 @@ class TicketButton(discord.ui.Button[str]):
         }
         if staff_role:
             overwrites[staff_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True, manage_messages=True, read_message_history=True)
-        username = user.name.lower().replace(" ", "-")
+        username = "".join(c if c.isalnum() or c in "-_" else "-" for c in user.name.lower().replace(" ", "-"))
         channel_name = f"{TICKET_CHANNEL_NAME_PREFIX}-{self.topic}-{username}"
         try:
             channel = await guild.create_text_channel(name=channel_name, category=category, topic=f"ticket:{user.id}", overwrites=overwrites)
         except discord.Forbidden:
             return await interaction.response.send_message("Sem permissao para criar o ticket.", ephemeral=True)
-        e = make_embed(f"Ticket de {self.topic.title()}", f"Olá {user.mention}!, a sua solicitacao foi recebida!\n\nDescreva o seu problema/pedido neste canal com detalhes.\nA nossa equipe ira atende-lo o mais rapido possivel.\n\nUse o botao abaixo para **fechar** o ticket quando terminar.", discord.Color.blue())
+        e = make_embed(f"Ticket de {self.topic.title()}", f"Olá {user.mention}!,a sua solicitacao foi recebida!\n\nDescreva o seu problema/pedido neste canal com detalhes.\nA nossa equipe ira atende-lo o mais rapido possivel.\n\nUse o botao abaixo para **fechar** o ticket quando terminar.", discord.Color.blue())
         view = TicketCloseView(topic=self.topic, user_id=user.id)
         await channel.send(user.mention, embed=e, view=view)
         if logs_channel:
@@ -253,10 +260,6 @@ class TicketPanelView(discord.ui.View):
 class WelcomeView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
-        self.add_item(discord.ui.Button(label="🎫 Abrir Ticket", style=discord.ButtonStyle.primary, custom_id="welcome:ticket"))
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        return True
 
     @discord.ui.button(label="🎫 Abrir Ticket", style=discord.ButtonStyle.primary, custom_id="welcome:ticket")
     async def _open_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
