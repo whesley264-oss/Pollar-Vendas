@@ -199,11 +199,11 @@ class TicketButton(discord.ui.Button[str]):
         e = make_embed(f"Ticket de {self.topic.title()}", f"Olá {user.mention}!,a sua solicitacao foi recebida!\n\nDescreva o seu problema/pedido neste canal com detalhes.\nA nossa equipe ira atende-lo o mais rapido possivel.\n\nUse o botao abaixo para **fechar** o ticket quando terminar.", discord.Color.blue())
         view = TicketCloseView(topic=self.topic, user_id=user.id)
         await channel.send(user.mention, embed=e, view=view)
-        if logs_channel:
-            log_e = make_embed(f"🆕 Novo Ticket: {self.topic.title()}", f"**Usuario:** {user.mention} ({user.id})\n**Canal:** {channel.mention}\n**Aberto em:** {discord.utils.format_dt(discord.utils.utcnow())}", discord.Color.green())
-            await logs_channel.send(embed=log_e)
         ticket_link_view = discord.ui.View()
         ticket_link_view.add_item(discord.ui.Button(label="Ir para o ticket", url=channel.jump_url, style=discord.ButtonStyle.link))
+        if logs_channel:
+            log_e = make_embed(f"🆕 Novo Ticket: {self.topic.title()}", f"**Usuario:** {user.mention} ({user.id})\n**Canal:** {channel.mention}\n**Aberto em:** {discord.utils.format_dt(discord.utils.utcnow())}", discord.Color.green())
+            await logs_channel.send(embed=log_e, view=ticket_link_view)
         await interaction.response.send_message(f"Ticket criado: {channel.mention}", ephemeral=True, view=ticket_link_view)
 
 
