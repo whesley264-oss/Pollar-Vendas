@@ -1,3 +1,7 @@
+import os
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
 import discord
 from discord.ext import commands
 
@@ -280,7 +284,25 @@ class WelcomeView(discord.ui.View):
         await interaction.response.send_message(embed=e, view=view, ephemeral=True)
 
 
+def start_health_server():
+    """Sobe um mini servidor HTTP na porta $PORT pra plataforma nao matar o bot."""
+    class _Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"ok")
+
+        def log_message(self, *args):
+            pass
+
+    port = int(os.getenv("PORT", "8000"))
+    srv = ThreadingHTTPServer(("0.0.0.0", port), _Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+
+
 if __name__ == "__main__":
     if not DISCORD_TOKEN:
         raise SystemExit("Defina o DISCORD_TOKEN no arquivo .env")
+    start_health_server()
     bot.run(DISCORD_TOKEN)
