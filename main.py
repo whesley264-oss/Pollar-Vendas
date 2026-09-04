@@ -67,7 +67,7 @@ async def on_member_join(member: discord.Member):
     channel = find_channel(member.guild, WELCOME_CHANNEL_NAME)
     if channel is None:
         return
-    e = make_embed(f"Bem-vindo(a) {member.display_name}! 🎉", f"Olá {member.mention}!, bem-vindo(a) ao **Pollar Vendas**!\n\nAqui voce encontra os melhores produtos e um atendimento de qualidade.\nPara abrir um ticket de suporte/compra/venda, use os botoes abaixo no canal de tickets.\n\nAproveite a sua estadia! 😊", discord.Color.green())
+    e = make_embed(f"Bem-vindo(a) {member.display_name}! 🎉", f"Olá {member.mention}!, bem-vindo(a) ao **Pollar Vendas**!\n\nAqui voce encontra os melhores produtos e um atendimento de qualidade.\nPara abrir um ticket de suporte, denuncia ou outro, use os botoes abaixo no canal de tickets.\n\nAproveite a sua estadia! 😊", discord.Color.green())
     e.set_thumbnail(url=member.display_avatar.url)
     try:
         await channel.send(content=member.mention, embed=e)
@@ -140,7 +140,7 @@ def ticket_panel_embed():
 
 
 def welcome_embed():
-    return make_embed("👋 Bem-vindo(a) ao Pollar Vendas!", "Aqui voce encontra produtos de qualidade e atendimento rapido.\nUse o **painel de tickets** para falar com o suporte, comprar ou vender.\n\n**Pollar Vendas** - a sua melhor escolha! 🚀", discord.Color.green())
+    return make_embed("👋 Bem-vindo(a) ao Pollar Vendas!", "Aqui voce encontra produtos de qualidade e atendimento rapido.\nUse o **painel de tickets** para falar com o suporte, denunciar ou outro.\n\n**Pollar Vendas** - a sua melhor escolha! 🚀", discord.Color.green())
 
 
 class TicketTopicView(discord.ui.View):
@@ -153,15 +153,11 @@ class TicketTopicView(discord.ui.View):
 class TicketButton(discord.ui.Button[str]):
     def __init__(self, topic: str):
         labels = {
-            "compra": "🛒 Compra",
-            "venda": "💸 Venda",
             "suporte": "🛠️ Suporte",
             "denuncia": "🚨 Denúncia",
             "outro": "📦 Outro",
         }
         styles = {
-            "compra": discord.ButtonStyle.green,
-            "venda": discord.ButtonStyle.blurple,
             "suporte": discord.ButtonStyle.primary,
             "denuncia": discord.ButtonStyle.danger,
             "outro": discord.ButtonStyle.secondary,
@@ -266,8 +262,6 @@ async def build_transcript(channel: discord.TextChannel, closer: discord.Member)
 class TicketPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
-        self.add_item(TicketButton("compra"))
-        self.add_item(TicketButton("venda"))
         self.add_item(TicketButton("suporte"))
         self.add_item(TicketButton("denuncia"))
         self.add_item(TicketButton("outro"))

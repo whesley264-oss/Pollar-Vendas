@@ -17,8 +17,6 @@ AUTO_ROLE_NAME = os.getenv("AUTO_ROLE_NAME", "")
 TICKET_CHANNEL_NAME_PREFIX = "ticket"
 
 SUPPORT_TOPICS = [
-    "compra",
-    "venda",
     "suporte",
     "denuncia",
     "outro",
