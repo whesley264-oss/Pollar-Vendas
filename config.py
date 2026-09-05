@@ -21,3 +21,8 @@ SUPPORT_TOPICS = [
     "denuncia",
     "outro",
 ]
+
+DEAL_TOPICS = ["vender", "trocar"]
+DEAL_CATEGORY_NAME = "NEGOCIOS"
+DEAL_LOGS_NAME = "negocios-transcripts"
+DEAL_CHANNEL_NAME_PREFIX = "negociacao"

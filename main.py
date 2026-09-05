@@ -33,7 +33,7 @@ async def on_ready():
     bot.add_view(TicketPanelView())
     bot.add_view(WelcomeView())
     bot.add_view(StaffPanelView())
-    bot.add_view(StaffPanelView())
+    bot.add_view(DealPanelView())
     for topic in SUPPORT_TOPICS:
         bot.add_view(TicketCloseView(topic=topic, user_id=None))
     for guild in list(bot.guilds):
@@ -56,6 +56,20 @@ async def prepare_guild(guild: discord.Guild):
             await guild.create_text_channel(TICKET_LOGS_NAME, category=category)
         except discord.Forbidden:
             print(f"Sem permissao para criar canal de logs em {guild.name}")
+    deal_cat = find_category(guild, DEAL_CATEGORY_NAME)
+    if deal_cat is None:
+        try:
+            deal_cat = await guild.create_category(DEAL_CATEGORY_NAME)
+        except discord.Forbidden:
+            print(f"Sem permissao para criar categoria {DEAL_CATEGORY_NAME} em {guild.name}")
+    if deal_cat is not None and find_channel(guild, "vendas") is None:
+        try:
+            vchannel = await guild.create_text_channel("vendas", category=deal_cat)
+            vview = DealPanelView()
+            vembed = make_embed("🛒 Vender ou Trocar", "Aqui voce pode **vender** ou **trocar** algo com a gente!\n\n**💰 Vender** — voce oferece um produto/servico e a gente paga por ele.\n**🔄 Trocar** — voce oferece algo e a gente oferece um produto nosso em troca.\n\nClique no botao abaixo para abrir a negociacao.\nNossa equipe analisa a sua proposta e responde aqui mesmo.\n\n📌 Regras: apenas negociacoes serias; sem spam; sem golpe.", discord.Color.gold())
+            await vchannel.send(embed=vembed, view=vview)
+        except discord.Forbidden:
+            print(f"Sem permissao para criar canal de vendas em {guild.name}")
 
 
 @bot.event
@@ -162,6 +176,80 @@ def ticket_panel_embed():
 def welcome_embed():
     return make_embed("👋 Bem-vindo(a) ao Pollar Vendas!", "Aqui voce encontra produtos de qualidade e atendimento rapido.\nUse o **painel de tickets** para falar com o suporte, denunciar ou outro.\n\n**Pollar Vendas** - a sua melhor escolha! 🚀", discord.Color.green())
 
+
+
+class DealTopicView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        for topic in DEAL_TOPICS:
+            self.add_item(DealButton(topic))
+
+class DealButton(discord.ui.Button[str]):
+    def __init__(self, topic: str):
+        labels = {"vender": "💰 Vender", "trocar": "🔄 Trocar"}
+        styles = {"vender": discord.ButtonStyle.success, "trocar": discord.ButtonStyle.primary}
+        super().__init__(
+            label=labels.get(topic, topic.title()),
+            style=styles.get(topic, discord.ButtonStyle.secondary),
+            custom_id="deal:".format(topic),
+        )
+        self.topic = topic
+
+    async def callback(self, interaction: discord.Interaction):
+        user: discord.Member = interaction.user
+        guild = interaction.guild
+        existing = ticket_channel_for(guild, user.id)
+        if existing:
+            return await interaction.response.send_message("Voce ja tem um ticket aberto: {}".format(existing.mention), ephemeral=True)
+        category = find_category(guild, DEAL_CATEGORY_NAME)
+        if category is None:
+            try:
+                category = await guild.create_category(DEAL_CATEGORY_NAME)
+            except discord.Forbidden:
+                return await interaction.response.send_message("Sem permissao para criar a categoria.", ephemeral=True)
+        logs_channel = find_channel(guild, DEAL_LOGS_NAME)
+        staff_role = discord.utils.get(guild.roles, name=STAFF_ROLE_NAME)
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            user: discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True, read_message_history=True),
+        }
+        if staff_role:
+            overwrites[staff_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True, manage_messages=True, read_message_history=True)
+        username = "".join(c if c.isalnum() or c in "-_" else "-" for c in user.name.lower().replace(" ", "-"))
+        channel_name = "{}-{}-{}".format(DEAL_CHANNEL_NAME_PREFIX, self.topic, username)
+        try:
+            channel = await guild.create_text_channel(name=channel_name, category=category, topic="deal:{}:{}".format(user.id, self.topic), overwrites=overwrites)
+        except discord.Forbidden:
+            return await interaction.response.send_message("Sem permissao para criar a negociacao.", ephemeral=True)
+        if self.topic == "vender":
+            e = make_embed("💰 Vender", "Ola {0}!, conte para a gente o que voce quer **vender** e o **valor** desejado.".format(user.mention, discord.Color.gold()))
+        else:
+            e = make_embed("🔄 Trocar", "Ola {0}!, conte o que voce quer **trocar** e o que voce deseja em troca.".format(user.mention, discord.Color.blue()))
+        view = TicketCloseView(topic=self.topic, user_id=user.id)
+        await channel.send(user.mention, embed=e, view=view)
+        link_view = discord.ui.View()
+        link_view.add_item(discord.ui.Button(label="📍 Ir para a negociacao", style=discord.ButtonStyle.link, url=channel.jump_url))
+        if logs_channel:
+            log_e = make_embed("🆕 Nova Negociacao: {}".format(self.topic.title()), "**Usuario:** {0} ({1})".format(user.mention, user.id), discord.Color.gold())
+            await logs_channel.send(embed=log_e, view=link_view)
+        await interaction.response.send_message("Negociacao criada: {}".format(channel.mention), ephemeral=True, view=link_view)
+
+class DealPanelView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(DealButton("vender"))
+        self.add_item(DealButton("trocar"))
+        self.add_item(DealPanelStaffButton())
+
+class DealPanelStaffButton(discord.ui.Button[str]):
+    def __init__(self):
+        super().__init__(label="🛡️ Painel da Equipe", style=discord.ButtonStyle.secondary, custom_id="deal:staff")
+
+    async def callback(self, interaction: discord.Interaction):
+        if not is_staff(interaction.user):
+            return await interaction.response.send_message("Voce nao tem permissao para acessar o painel.", ephemeral=True)
+        painel_staff = make_embed("🛡️ Painel da Equipe", "Use as acoes abaixo para gerenciar esta negociacao.\n\n**🔒 Fechar** — encerra e salva o transcript.\n**👤 Usuario** — mostra quem abriu.\n**✏️ Renomear** — muda o nome do canal.\n**➕ Adicionar** — libera acesso a outro usuario.\n**➖ Remover** — tira o acesso de um usuario.\n**🔄 Passar** — transfere para outro staff.\n**✅ Finalizar** — conclui e bloqueia o canal.", discord.Color.dark_teal())
+        await interaction.response.send_message(embed=painel_staff, view=StaffPanelView(topic=self.topic, user_id=interaction.user.id), ephemeral=True)
 
 class TicketTopicView(discord.ui.View):
     def __init__(self):
