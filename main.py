@@ -137,6 +137,23 @@ async def create_ticket_command(ctx: commands.Context, *, motivo: str = None):
     panel = make_embed("🎫 Abrir Ticket", "Escolha o assunto do seu atendimento abaixo:", discord.Color.blue())
     await ctx.send(embed=panel, view=view)
 
+@bot.command(name="painel")
+async def staff_panel_command(ctx: commands.Context):
+    if not ctx.guild or not is_staff(ctx.author):
+        return await ctx.send("Voce nao tem permissao para usar este comando.")
+    topic = "suporte"
+    if ctx.channel and ctx.channel.name:
+        parts = ctx.channel.name.split("-")
+        if len(parts) > 1 and parts[1] in SUPPORT_TOPICS:
+            topic = parts[1]
+    user_id = None
+    if ctx.channel.topic and ctx.channel.topic.startswith("ticket:"):
+        try:
+            user_id = int(ctx.channel.topic.split(":", 1)[1])
+        except ValueError:
+            user_id = None
+    painel_staff = make_embed("🛡️ Painel da Equipe", "Use as ações abaixo para gerenciar este ticket.\n\n**🔒 Fechar** — encerra e salva o transcript.\n**👤 Usuário** — mostra quem abriu.\n**✏️ Renomear** — muda o nome do canal.\n**➕ Adicionar** — libera acesso a outro usuário.\n**➖ Remover** — tira o acesso de um usuário.", discord.Color.dark_teal())
+    await ctx.send(embed=painel_staff, view=StaffPanelView(topic=topic, user_id=user_id))
 
 def ticket_panel_embed():
     return make_embed("🎫 Central de Suporte", "Bem-vindo(a) a central de atendimento **Pollar Vendas**!\n\nEscolha o assunto do seu atendimento para abrir um ticket.\nUm membro da nossa equipe ira atende-lo em breve.\n\n📌 **Disponivel 24/7** para melhor atende-lo!", discord.Color.blue())
@@ -200,34 +217,16 @@ class TicketButton(discord.ui.Button[str]):
         except discord.Forbidden:
             return await interaction.response.send_message("Sem permissao para criar o ticket.", ephemeral=True)
         e = make_embed(f"Ticket de {self.topic.title()}", f"Olá {user.mention}!,a sua solicitacao foi recebida!\n\nDescreva o seu problema/pedido neste canal com detalhes.\nA nossa equipe ira atende-lo o mais rapido possivel.\n\nUse o botao abaixo para **fechar** o ticket quando terminar.", discord.Color.blue())
-        view = StaffGateView(channel_id=channel.id, topic=self.topic, user_id=user.id)
+        view = TicketCloseView(topic=self.topic, user_id=user.id)
         await channel.send(user.mention, embed=e, view=view)
         link_view = discord.ui.View()
-        link_view.add_item(TicketLinkButton(channel.id))
+        link_view.add_item(discord.ui.Button(label="📍 Ir para o ticket", style=discord.ButtonStyle.link, url=channel.jump_url))
         if logs_channel:
             log_e = make_embed(f"🆕 Novo Ticket: {self.topic.title()}", f"**Usuario:** {user.mention} ({user.id})\n**Canal:** {channel.mention}\n**Aberto em:** {discord.utils.format_dt(discord.utils.utcnow())}", discord.Color.green())
             await logs_channel.send(embed=log_e, view=link_view)
         await interaction.response.send_message(f"Ticket criado: {channel.mention}", ephemeral=True, view=link_view)
 
 
-
-
-class StaffGateButton(discord.ui.Button[str]):
-    def __init__(self, channel_id: int, topic: str, user_id: int):
-        super().__init__(label="🛡️ Painel do Staff", style=discord.ButtonStyle.secondary, custom_id=f"staff:gate:{channel_id}")
-        self.topic = topic
-        self.user_id = user_id
-
-    async def callback(self, interaction: discord.Interaction):
-        if not is_staff(interaction.user):
-            return await interaction.response.send_message("❌ Você não tem permissão para acessar o painel da equipe.", ephemeral=True)
-        panel = make_embed("🛡️ Painel da Equipe", "Use as ações abaixo para gerenciar este ticket.\n\n**🔒 Fechar** — encerra e salva o transcript.\n**👤 Usuário** — mostra quem abriu.\n**✏️ Renomear** — muda o nome do canal.\n**➕ Adicionar** — libera acesso a outro usuário.\n**➖ Remover** — tira o acesso de um usuário.", discord.Color.dark_teal())
-        await interaction.response.send_message(embed=panel, view=StaffPanelView(topic=self.topic, user_id=self.user_id))
-
-class StaffGateView(discord.ui.View):
-    def __init__(self, channel_id: int, topic: str, user_id: int):
-        super().__init__(timeout=None)
-        self.add_item(StaffGateButton(channel_id, topic, user_id))
 
 
 
