@@ -71,16 +71,16 @@ async def prepare_guild(guild: discord.Guild):
         if vchannel is None:
             try:
                 vchannel = await guild.create_text_channel("vendas", category=deal_cat)
-                await vchannel.edit(sync_permissions=False, overwrites={
-                    guild.default_role: discord.PermissionOverwrite(view_channel=True, send_messages=False),
-                    bot.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, embed_links=True, attach_files=True),
-                })
             except discord.Forbidden:
                 print(f"Sem permissao para criar canal de vendas em {guild.name}")
         if vchannel is not None:
             try:
-                msgs_ok = vchannel.last_message_id is not None
-                if not msgs_ok:
+                if not vchannel.permissions_for(bot.user).send_messages:
+                    await vchannel.edit(sync_permissions=False, overwrites={
+                        guild.default_role: discord.PermissionOverwrite(view_channel=True, send_messages=False),
+                        bot.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, embed_links=True, attach_files=True),
+                    })
+                if vchannel.last_message_id is None:
                     vview = DealPanelView()
                     vembed = make_embed("🛒 Vender ou Trocar", "Aqui voce pode **vender** ou **trocar** algo com a gente!\n\n**💰 Vender** — voce oferece um produto/servico e a gente paga por ele.\n**🔄 Trocar** — voce oferece algo e a gente oferece um produto nosso em troca.\n\nClique no botao abaixo para abrir a negociacao.\nNossa equipe analisa a sua proposta e responde aqui mesmo.\n\n📌 Regras: apenas negociacoes serias; sem spam; sem golpe.", discord.Color.gold())
                     await vchannel.send(embed=vembed, view=vview)
