@@ -79,8 +79,8 @@ async def prepare_guild(guild: discord.Guild):
                 print(f"Sem permissao para criar canal de vendas em {guild.name}")
         if vchannel is not None:
             try:
-                msgs = [m async for m in vchannel.history(limit=5)]
-                if not msgs:
+                msgs_ok = vchannel.last_message_id is not None
+                if not msgs_ok:
                     vview = DealPanelView()
                     vembed = make_embed("🛒 Vender ou Trocar", "Aqui voce pode **vender** ou **trocar** algo com a gente!\n\n**💰 Vender** — voce oferece um produto/servico e a gente paga por ele.\n**🔄 Trocar** — voce oferece algo e a gente oferece um produto nosso em troca.\n\nClique no botao abaixo para abrir a negociacao.\nNossa equipe analisa a sua proposta e responde aqui mesmo.\n\n📌 Regras: apenas negociacoes serias; sem spam; sem golpe.", discord.Color.gold())
                     await vchannel.send(embed=vembed, view=vview)
@@ -183,6 +183,16 @@ async def staff_panel_command(ctx: commands.Context):
             user_id = None
     painel_staff = make_embed("🛡️ Painel da Equipe", "Use as ações abaixo para gerenciar este ticket.\n\n**🔒 Fechar** — encerra e salva o transcript.\n**👤 Usuário** — mostra quem abriu.\n**✏️ Renomear** — muda o nome do canal.\n**➕ Adicionar** — libera acesso a outro usuário.\n**➖ Remover** — tira o acesso de um usuário.\n**🔄 Passar** — transfere o ticket para outro staff.\n**✅ Finalizar** — conclui o atendimento e bloqueia o canal.", discord.Color.dark_teal())
     await ctx.send(embed=painel_staff, view=StaffPanelView(topic=topic, user_id=user_id))
+
+
+@bot.command(name="vendas")
+async def vendas_command(ctx: commands.Context):
+    """Publica o painel de Vender/Trocar no canal atual."""
+    if not ctx.guild or not is_staff(ctx.author):
+        return await ctx.send("Voce nao tem permissao para usar este comando.")
+    painel = make_embed("🛒 Vender ou Trocar", "Aqui voce pode **vender** ou **trocar** algo com a gente!\n\n**💰 Vender** — voce oferece um produto/servico e a gente paga por ele.\n**🔄 Trocar** — voce oferece algo e a gente oferece um produto nosso em troca.\n\nClique no botao abaixo para abrir a negociacao.\nNossa equipe analisa a sua proposta e responde aqui mesmo.\n\n📌 Regras: apenas negociacoes serias; sem spam; sem golpe.", discord.Color.gold())
+    await ctx.send(embed=painel, view=DealPanelView())
+
 
 def ticket_panel_embed():
     return make_embed("🎫 Central de Suporte", "Bem-vindo(a) a central de atendimento **Pollar Vendas**!\n\nEscolha o assunto do seu atendimento para abrir um ticket.\nUm membro da nossa equipe ira atende-lo em breve.\n\n📌 **Disponivel 24/7** para melhor atende-lo!", discord.Color.blue())
