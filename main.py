@@ -17,6 +17,10 @@ from config import (
     TICKET_CHANNEL_NAME_PREFIX,
     TICKET_LOGS_NAME,
     WELCOME_CHANNEL_NAME,
+    DEAL_CATEGORY_NAME,
+    DEAL_CHANNEL_NAME_PREFIX,
+    DEAL_LOGS_NAME,
+    DEAL_TOPICS,
 )
 from utils import find_category, find_channel, is_staff, make_embed, ticket_channel_for
 
