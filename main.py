@@ -200,10 +200,8 @@ class TicketButton(discord.ui.Button[str]):
         except discord.Forbidden:
             return await interaction.response.send_message("Sem permissao para criar o ticket.", ephemeral=True)
         e = make_embed(f"Ticket de {self.topic.title()}", f"Olá {user.mention}!,a sua solicitacao foi recebida!\n\nDescreva o seu problema/pedido neste canal com detalhes.\nA nossa equipe ira atende-lo o mais rapido possivel.\n\nUse o botao abaixo para **fechar** o ticket quando terminar.", discord.Color.blue())
-        view = TicketCloseView(topic=self.topic, user_id=user.id)
+        view = StaffGateView(channel_id=channel.id, topic=self.topic, user_id=user.id)
         await channel.send(user.mention, embed=e, view=view)
-        staff_panel = make_embed("🛡️ Painel da Equipe", "Use as ações abaixo para gerenciar este ticket.\n\n**🔒 Fechar** — encerra e salva o transcript.\n**👤 Usuário** — mostra quem abriu.\n**✏️ Renomear** — muda o nome do canal.\n**➕ Adicionar** — libera acesso a outro usuário.\n**➖ Remover** — tira o acesso de um usuário.", discord.Color.dark_teal())
-        await channel.send(embed=staff_panel, view=StaffPanelView(topic=self.topic, user_id=user.id))
         link_view = discord.ui.View()
         link_view.add_item(TicketLinkButton(channel.id))
         if logs_channel:
@@ -213,14 +211,31 @@ class TicketButton(discord.ui.Button[str]):
 
 
 
+
+class StaffGateButton(discord.ui.Button[str]):
+    def __init__(self, channel_id: int, topic: str, user_id: int):
+        super().__init__(label="🛡️ Painel do Staff", style=discord.ButtonStyle.secondary, custom_id=f"staff:gate:{channel_id}")
+        self.topic = topic
+        self.user_id = user_id
+
+    async def callback(self, interaction: discord.Interaction):
+        if not is_staff(interaction.user):
+            return await interaction.response.send_message("❌ Você não tem permissão para acessar o painel da equipe.", ephemeral=True)
+        panel = make_embed("🛡️ Painel da Equipe", "Use as ações abaixo para gerenciar este ticket.\n\n**🔒 Fechar** — encerra e salva o transcript.\n**👤 Usuário** — mostra quem abriu.\n**✏️ Renomear** — muda o nome do canal.\n**➕ Adicionar** — libera acesso a outro usuário.\n**➖ Remover** — tira o acesso de um usuário.", discord.Color.dark_teal())
+        await interaction.response.send_message(embed=panel, view=StaffPanelView(topic=self.topic, user_id=self.user_id))
+
+class StaffGateView(discord.ui.View):
+    def __init__(self, channel_id: int, topic: str, user_id: int):
+        super().__init__(timeout=None)
+        self.add_item(StaffGateButton(channel_id, topic, user_id))
+
+
 class TicketLinkButton(discord.ui.Button[str]):
     def __init__(self, channel_id: int):
         super().__init__(label="📍 Ir para o ticket", style=discord.ButtonStyle.secondary, custom_id=f"ticket_link:{channel_id}")
         self.channel_id = channel_id
 
     async def callback(self, interaction: discord.Interaction):
-        if not is_staff(interaction.user):
-            return await interaction.response.send_message("Sem permissao para usar este botao.", ephemeral=True)
         channel = interaction.guild.get_channel(self.channel_id)
         if channel is None:
             return await interaction.response.send_message("❌ Este ticket ja foi **resolvido/encerrado** e o canal foi removido.", ephemeral=True)
