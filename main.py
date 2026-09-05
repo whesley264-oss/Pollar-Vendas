@@ -83,7 +83,22 @@ async def prepare_guild(guild: discord.Guild):
                 if vchannel.last_message_id is None:
                     vview = DealPanelView()
                     vembed = make_embed("🛒 Vender ou Trocar", "Aqui voce pode **vender** ou **trocar** algo com a gente!\n\n**💰 Vender** — voce oferece um produto/servico e a gente paga por ele.\n**🔄 Trocar** — voce oferece algo e a gente oferece um produto nosso em troca.\n\nClique no botao abaixo para abrir a negociacao.\nNossa equipe analisa a sua proposta e responde aqui mesmo.\n\n📌 Regras: apenas negociacoes serias; sem spam; sem golpe.", discord.Color.gold())
-                    await vchannel.send(embed=vembed, view=vview)
+                    try:
+                        await vchannel.send(embed=vembed, view=vview)
+                    except discord.Forbidden:
+                        try:
+                            await vchannel.delete(reason="Recriando canal de vendas sem permissao de envio")
+                            vchannel = await guild.create_text_channel("vendas", category=deal_cat, overwrites={
+                                guild.default_role: discord.PermissionOverwrite(view_channel=True, send_messages=False),
+                                bot.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, embed_links=True, attach_files=True),
+                            })
+                            vview = DealPanelView()
+                            vembed = make_embed("🛒 Vender ou Trocar", "Aqui voce pode **vender** ou **trocar** algo com a gente!\n\n**💰 Vender** — voce oferece um produto/servico e a gente paga por ele.\n**🔄 Trocar** — voce oferece algo e a gente oferece um produto nosso em troca.\n\nClique no botao abaixo para abrir a negociacao.\nNossa equipe analisa a sua proposta e responde aqui mesmo.\n\n📌 Regras: apenas negociacoes serias; sem spam; sem golpe.", discord.Color.gold())
+                            await vchannel.send(embed=vembed, view=vview)
+                        except discord.Forbidden:
+                            print(f"Sem permissao nem para recriar o canal de vendas em {guild.name}")
+                    except Exception as e:
+                        print(f"Falha ao publicar painel de vendas: {e}")
                     print("Painel de vendas publicado")
             except Exception as e:
                 print(f"Falha ao publicar painel de vendas: {e}")
