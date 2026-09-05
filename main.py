@@ -1,3 +1,4 @@
+import re
 import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -31,6 +32,8 @@ async def on_ready():
     print(f"{bot.user} esta online em {len(bot.guilds)} servidor(es)!")
     bot.add_view(TicketPanelView())
     bot.add_view(WelcomeView())
+    bot.add_view(StaffPanelView())
+    bot.add_view(StaffPanelView())
     for topic in SUPPORT_TOPICS:
         bot.add_view(TicketCloseView(topic=topic, user_id=None))
     for guild in list(bot.guilds):
@@ -199,13 +202,164 @@ class TicketButton(discord.ui.Button[str]):
         e = make_embed(f"Ticket de {self.topic.title()}", f"Olá {user.mention}!,a sua solicitacao foi recebida!\n\nDescreva o seu problema/pedido neste canal com detalhes.\nA nossa equipe ira atende-lo o mais rapido possivel.\n\nUse o botao abaixo para **fechar** o ticket quando terminar.", discord.Color.blue())
         view = TicketCloseView(topic=self.topic, user_id=user.id)
         await channel.send(user.mention, embed=e, view=view)
-        ticket_link_view = discord.ui.View()
-        ticket_link_view.add_item(discord.ui.Button(label="Ir para o ticket", url=channel.jump_url, style=discord.ButtonStyle.link))
+        staff_panel = make_embed("🛡️ Painel da Equipe", "Use as ações abaixo para gerenciar este ticket.\n\n**🔒 Fechar** — encerra e salva o transcript.\n**👤 Usuário** — mostra quem abriu.\n**✏️ Renomear** — muda o nome do canal.\n**➕ Adicionar** — libera acesso a outro usuário.\n**➖ Remover** — tira o acesso de um usuário.", discord.Color.dark_teal())
+        await channel.send(embed=staff_panel, view=StaffPanelView(topic=self.topic, user_id=user.id))
+        link_view = discord.ui.View()
+        link_view.add_item(TicketLinkButton(channel.id))
         if logs_channel:
             log_e = make_embed(f"🆕 Novo Ticket: {self.topic.title()}", f"**Usuario:** {user.mention} ({user.id})\n**Canal:** {channel.mention}\n**Aberto em:** {discord.utils.format_dt(discord.utils.utcnow())}", discord.Color.green())
-            await logs_channel.send(embed=log_e, view=ticket_link_view)
-        await interaction.response.send_message(f"Ticket criado: {channel.mention}", ephemeral=True, view=ticket_link_view)
+            await logs_channel.send(embed=log_e, view=link_view)
+        await interaction.response.send_message(f"Ticket criado: {channel.mention}", ephemeral=True, view=link_view)
 
+
+
+class TicketLinkButton(discord.ui.Button[str]):
+    def __init__(self, channel_id: int):
+        super().__init__(label="📍 Ir para o ticket", style=discord.ButtonStyle.secondary, custom_id=f"ticket_link:{channel_id}")
+        self.channel_id = channel_id
+
+    async def callback(self, interaction: discord.Interaction):
+        if not is_staff(interaction.user):
+            return await interaction.response.send_message("Sem permissao para usar este botao.", ephemeral=True)
+        channel = interaction.guild.get_channel(self.channel_id)
+        if channel is None:
+            return await interaction.response.send_message("❌ Este ticket ja foi **resolvido/encerrado** e o canal foi removido.", ephemeral=True)
+        await interaction.response.send_message(f"🔓 Seu ticket continua aberto: {channel.jump_url}", ephemeral=True)
+
+def ticket_link_view(channel: discord.TextChannel) -> discord.ui.View:
+    view = discord.ui.View()
+    view.add_item(TicketLinkButton(channel.id))
+    return view
+
+class StaffUserButton(discord.ui.Button[str]):
+    def __init__(self, user_id: int):
+        super().__init__(label="👤 Usuário", style=discord.ButtonStyle.primary, custom_id="staff:user")
+        self.user_id = user_id
+
+    async def callback(self, interaction: discord.Interaction):
+        if not is_staff(interaction.user):
+            return await interaction.response.send_message("Sem permissao para usar o painel.", ephemeral=True)
+        user = interaction.guild.get_member(self.user_id)
+        if user is None:
+            return await interaction.response.send_message(f"👤 Usuário do ticket: ID `{self.user_id}` (nao esta mais no servidor.)", ephemeral=True)
+        await interaction.response.send_message(f"👤 **Usuário do ticket:** {user.mention} (`{user.id}`)", ephemeral=True)
+
+class StaffRenameButton(discord.ui.Button[str]):
+    def __init__(self):
+        super().__init__(label="✏️ Renomear", style=discord.ButtonStyle.secondary, custom_id="staff:rename")
+
+    async def callback(self, interaction: discord.Interaction):
+        if not is_staff(interaction.user):
+            return await interaction.response.send_message("Sem permissao para usar o painel.", ephemeral=True)
+        await interaction.response.send_modal(RenameTicketModal())
+
+class RenameTicketModal(discord.ui.Modal):
+    def __init__(self):
+        super().__init__(title="Renomear canal do ticket")
+        self.novo_nome = discord.ui.TextInput(label="Novo nome do canal", placeholder="ex: ticket-suporte-fulano", max_length=80, required=True, custom_id="rename_name")
+        self.add_item(self.novo_nome)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if not is_staff(interaction.user):
+            return await interaction.response.send_message("Sem permissao.", ephemeral=True)
+        canal = interaction.channel
+        nome = self.novo_nome.value.strip().lower().replace(" ", "-")
+        nome = "".join(c for c in nome if c.isalnum() or c in "-_")
+        if len(nome) < 2:
+            return await interaction.response.send_message("Nome invalido para o canal.", ephemeral=True)
+        try:
+            await canal.edit(name=nome)
+            logs = find_channel(interaction.guild, TICKET_LOGS_NAME)
+            if logs:
+                await logs.send(embed=make_embed("✏️ Canal renomeado", f"**Canal:** {canal.mention}\n**Novo nome:** `{nome}`\n**Por:** {interaction.user.mention}", discord.Color.blue()))
+            await interaction.response.send_message(f"Canal renomeado para **{nome}**! ✅", ephemeral=True)
+        except discord.Forbidden:
+            await interaction.response.send_message("Sem permissao para renomear o canal.", ephemeral=True)
+
+class StaffAddButton(discord.ui.Button[str]):
+    def __init__(self):
+        super().__init__(label="➕ Adicionar", style=discord.ButtonStyle.success, custom_id="staff:add")
+
+    async def callback(self, interaction: discord.Interaction):
+        if not is_staff(interaction.user):
+            return await interaction.response.send_message("Sem permissao para usar o painel.", ephemeral=True)
+        await interaction.response.send_modal(AddUserTicketModal())
+
+class AddUserTicketModal(discord.ui.Modal):
+    def __init__(self):
+        super().__init__(title="Adicionar usuário ao ticket")
+        self.user_input = discord.ui.TextInput(label="ID ou menção do usuário", placeholder="ex: 123456789012345678 ou @fulano", required=True, custom_id="add_user")
+        self.add_item(self.user_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if not is_staff(interaction.user):
+            return await interaction.response.send_message("Sem permissao.", ephemeral=True)
+        target = await _resolve_user(interaction, self.user_input.value)
+        if target is None:
+            return await interaction.response.send_message("Usuário não encontrado. Envie o ID ou a menção.", ephemeral=True)
+        await interaction.channel.set_permissions(target, view_channel=True, send_messages=True, read_message_history=True, attach_files=True)
+        logs = find_channel(interaction.guild, TICKET_LOGS_NAME)
+        if logs:
+            await logs.send(embed=make_embed("➕ Usuário adicionado", f"**Ticket:** {interaction.channel.mention}\n**Usuário:** {target.mention} (`{target.id}`)\n**Por:** {interaction.user.mention}", discord.Color.green()))
+        await interaction.response.send_message(f"✅ {target.mention} adicionado ao ticket!", ephemeral=True)
+
+class StaffRemoveButton(discord.ui.Button[str]):
+    def __init__(self, user_id: int):
+        super().__init__(label="➖ Remover", style=discord.ButtonStyle.danger, custom_id="staff:remove")
+        self.user_id = user_id
+
+    async def callback(self, interaction: discord.Interaction):
+        if not is_staff(interaction.user):
+            return await interaction.response.send_message("Sem permissao para usar o painel.", ephemeral=True)
+        await interaction.response.send_modal(RemoveUserTicketModal(self.user_id))
+
+class RemoveUserTicketModal(discord.ui.Modal):
+    def __init__(self, owner_id: int):
+        super().__init__(title="Remover usuário do ticket")
+        self.user_input = discord.ui.TextInput(label="ID ou menção do usuário", placeholder="ex: 123456789012345678 ou @fulano", required=True, custom_id="remove_user")
+        self.add_item(self.user_input)
+        self.owner_id = owner_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if not is_staff(interaction.user):
+            return await interaction.response.send_message("Sem permissao.", ephemeral=True)
+        target = await _resolve_user(interaction, self.user_input.value)
+        if target is None:
+            return await interaction.response.send_message("Usuário não encontrado. Envie o ID ou a menção.", ephemeral=True)
+        if target.id == self.owner_id:
+            return await interaction.response.send_message("❌ Não é possível remover o dono do ticket.", ephemeral=True)
+        await interaction.channel.set_permissions(target, overwrite=None)
+        logs = find_channel(interaction.guild, TICKET_LOGS_NAME)
+        if logs:
+            await logs.send(embed=make_embed("➖ Usuário removido", f"**Ticket:** {interaction.channel.mention}\n**Usuário:** {target.mention} (`{target.id}`)\n**Por:** {interaction.user.mention}", discord.Color.red()))
+        await interaction.response.send_message(f"➖ {target.mention} removido do ticket.", ephemeral=True)
+
+async def _resolve_user(interaction: discord.Interaction, raw: str) -> discord.Member:
+    raw = raw.strip()
+    m = re.search(r"<@!?(\d+)>", raw)
+    if m:
+        user_id = int(m.group(1))
+    else:
+        try:
+            user_id = int(raw)
+        except ValueError:
+            return None
+    member = interaction.guild.get_member(user_id)
+    if member is None:
+        try:
+            member = await interaction.guild.fetch_member(user_id)
+        except discord.NotFound:
+            return None
+    return member
+
+class StaffPanelView(discord.ui.View):
+    def __init__(self, topic: str = "suporte", user_id: int = None):
+        super().__init__(timeout=None)
+        self.add_item(CloseTicketButton(topic, user_id))
+        self.add_item(StaffUserButton(user_id))
+        self.add_item(StaffRenameButton())
+        self.add_item(StaffAddButton())
+        self.add_item(StaffRemoveButton(user_id))
 
 class TicketCloseView(discord.ui.View):
     def __init__(self, topic: str, user_id: int):
