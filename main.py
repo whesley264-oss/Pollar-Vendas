@@ -152,7 +152,7 @@ async def staff_panel_command(ctx: commands.Context):
             user_id = int(ctx.channel.topic.split(":", 1)[1])
         except ValueError:
             user_id = None
-    painel_staff = make_embed("🛡️ Painel da Equipe", "Use as ações abaixo para gerenciar este ticket.\n\n**🔒 Fechar** — encerra e salva o transcript.\n**👤 Usuário** — mostra quem abriu.\n**✏️ Renomear** — muda o nome do canal.\n**➕ Adicionar** — libera acesso a outro usuário.\n**➖ Remover** — tira o acesso de um usuário.", discord.Color.dark_teal())
+    painel_staff = make_embed("🛡️ Painel da Equipe", "Use as ações abaixo para gerenciar este ticket.\n\n**🔒 Fechar** — encerra e salva o transcript.\n**👤 Usuário** — mostra quem abriu.\n**✏️ Renomear** — muda o nome do canal.\n**➕ Adicionar** — libera acesso a outro usuário.\n**➖ Remover** — tira o acesso de um usuário.\n**🔄 Passar** — transfere o ticket para outro staff.\n**✅ Finalizar** — conclui o atendimento e bloqueia o canal.", discord.Color.dark_teal())
     await ctx.send(embed=painel_staff, view=StaffPanelView(topic=topic, user_id=user_id))
 
 def ticket_panel_embed():
@@ -359,11 +359,13 @@ async def _resolve_user(interaction: discord.Interaction, raw: str) -> discord.M
 class StaffPanelView(discord.ui.View):
     def __init__(self, topic: str = "suporte", user_id: int = None):
         super().__init__(timeout=None)
-        self.add_item(CloseTicketButton(topic, user_id))
         self.add_item(StaffUserButton(user_id))
         self.add_item(StaffRenameButton())
         self.add_item(StaffAddButton())
         self.add_item(StaffRemoveButton(user_id))
+        self.add_item(PassTicketButton())
+        self.add_item(FinishTicketButton(topic, user_id))
+        self.add_item(CloseTicketButton(topic, user_id))
 
 class TicketCloseView(discord.ui.View):
     def __init__(self, topic: str, user_id: int):
@@ -372,6 +374,67 @@ class TicketCloseView(discord.ui.View):
         self.user_id = user_id
         self.add_item(CloseTicketButton(topic, user_id))
 
+
+
+class PassTicketButton(discord.ui.Button[str]):
+    def __init__(self):
+        super().__init__(label="🔄 Passar Ticket", style=discord.ButtonStyle.primary, custom_id="staff:pass")
+
+    async def callback(self, interaction: discord.Interaction):
+        if not is_staff(interaction.user):
+            return await interaction.response.send_message("Sem permissao para usar o painel.", ephemeral=True)
+        await interaction.response.send_modal(PassTicketModal())
+
+class PassTicketModal(discord.ui.Modal):
+    def __init__(self):
+        super().__init__(title="Passar ticket para outro staff")
+        self.target = discord.ui.TextInput(label="ID ou menção do staff", placeholder="ex: 123456789012345678 ou @staff", required=True, custom_id="pass_target")
+        self.add_item(self.target)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if not is_staff(interaction.user):
+            return await interaction.response.send_message("Sem permissao.", ephemeral=True)
+        target = await _resolve_user(interaction, self.target.value)
+        if target is None:
+            return await interaction.response.send_message("Usuário não encontrado. Envie o ID ou a menção.", ephemeral=True)
+        if not is_staff(target):
+            return await interaction.response.send_message("❌ O usuário informado não é da equipe (staff).", ephemeral=True)
+        await interaction.channel.set_permissions(target, view_channel=True, send_messages=True, read_message_history=True, attach_files=True)
+        logs = find_channel(interaction.guild, TICKET_LOGS_NAME)
+        if logs:
+            await logs.send(embed=make_embed("🔄 Ticket passado", f"**Ticket:** {interaction.channel.mention}\n**De:** {interaction.user.mention}\n**Para:** {target.mention} (`{target.id}`)", discord.Color.blue()))
+        await interaction.channel.send(f"🔔 {target.mention}, você foi designado para assumir este ticket!")
+        await interaction.response.send_message(f"🔄 Ticket passado para {target.mention}!", ephemeral=True)
+
+class FinishTicketButton(discord.ui.Button[str]):
+    def __init__(self, topic: str, user_id: int):
+        super().__init__(label="✅ Finalizar Ticket", style=discord.ButtonStyle.success, custom_id=f"finish:{topic}")
+        self.topic = topic
+        self.user_id = user_id
+
+    async def callback(self, interaction: discord.Interaction):
+        if not is_staff(interaction.user):
+            return await interaction.response.send_message("Sem permissao para usar o painel.", ephemeral=True)
+        channel = interaction.channel
+        if "finalizado" in channel.name:
+            return await interaction.response.send_message("Este ticket ja foi finalizado.", ephemeral=True)
+        user = interaction.guild.get_member(self.user_id)
+        try:
+            await channel.edit(name=channel.name.replace("ticket", "finalizado", 1))
+            if user:
+                await channel.set_permissions(user, view_channel=True, send_messages=False, read_message_history=True, attach_files=False)
+        except discord.Forbidden:
+            await interaction.response.send_message("Sem permissao para finalizar o ticket.", ephemeral=True)
+            return
+        await channel.send(embed=make_embed("✅ Ticket finalizado", "O atendimento foi concluído. O canal ficou disponível apenas para leitura. Obrigado pelo contato!", discord.Color.green()))
+        logs = find_channel(interaction.guild, TICKET_LOGS_NAME)
+        if logs:
+            transcript = await build_transcript(channel, interaction.user)
+            log_e = make_embed(f"✅ Ticket Finalizado: {self.topic.title()}", f"**Usuario:** <@{self.user_id}> ({self.user_id})\n**Canal:** {channel.mention}\n**Finalizado por:** {interaction.user.mention}\n**Em:** {discord.utils.format_dt(discord.utils.utcnow())}", discord.Color.green())
+            if transcript:
+                log_e.add_field(name="📜 Transcricao", value=transcript[:1024], inline=False)
+            await logs.send(embed=log_e)
+        await interaction.response.send_message("Ticket finalizado! ✅ (use 🔒 Fechar para apagar o canal)", ephemeral=True)
 
 class CloseTicketButton(discord.ui.Button[str]):
     def __init__(self, topic: str, user_id: int):
