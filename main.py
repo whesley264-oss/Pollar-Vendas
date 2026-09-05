@@ -230,20 +230,10 @@ class StaffGateView(discord.ui.View):
         self.add_item(StaffGateButton(channel_id, topic, user_id))
 
 
-class TicketLinkButton(discord.ui.Button[str]):
-    def __init__(self, channel_id: int):
-        super().__init__(label="📍 Ir para o ticket", style=discord.ButtonStyle.secondary, custom_id=f"ticket_link:{channel_id}")
-        self.channel_id = channel_id
-
-    async def callback(self, interaction: discord.Interaction):
-        channel = interaction.guild.get_channel(self.channel_id)
-        if channel is None:
-            return await interaction.response.send_message("❌ Este ticket ja foi **resolvido/encerrado** e o canal foi removido.", ephemeral=True)
-        await interaction.response.send_message(f"🔓 Seu ticket continua aberto: {channel.jump_url}", ephemeral=True)
 
 def ticket_link_view(channel: discord.TextChannel) -> discord.ui.View:
     view = discord.ui.View()
-    view.add_item(TicketLinkButton(channel.id))
+    view.add_item(discord.ui.Button(label="📍 Ir para o ticket", style=discord.ButtonStyle.link, url=channel.jump_url))
     return view
 
 class StaffUserButton(discord.ui.Button[str]):
