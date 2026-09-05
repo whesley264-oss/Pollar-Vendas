@@ -231,7 +231,7 @@ class DealButton(discord.ui.Button[str]):
         super().__init__(
             label=labels.get(topic, topic.title()),
             style=styles.get(topic, discord.ButtonStyle.secondary),
-            custom_id="deal:".format(topic),
+            custom_id=f"deal:{topic}",
         )
         self.topic = topic
 
